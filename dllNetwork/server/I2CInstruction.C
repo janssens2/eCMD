@@ -32,6 +32,7 @@
 #include <iomanip>
 #include <errno.h>
 #include <inttypes.h>
+#include <ecmdStructs.H>
 
 #include <OutputLite.H>
 extern OutputLite out;
@@ -54,7 +55,8 @@ address(0),
 deviceString(""),
 iicAckMask(0),
 numRedos(0),
-msDelay(0)
+msDelay(0),
+serverI2cFlags(0)
 {
   version = 0x4;
   type = I2C;
@@ -75,7 +77,8 @@ address(0),
 deviceString(""),
 iicAckMask(0),
 numRedos(0),
-msDelay(0)
+msDelay(0),
+serverI2cFlags(0)
 {
   version = 0x2;
   type = I2C;
@@ -148,7 +151,7 @@ uint32_t I2CInstruction::setup(InstructionCommand i_command, uint32_t i_cfamid, 
   return 0;
 }
 
-uint32_t I2CInstruction::setup(InstructionCommand i_command, std::string &i_deviceString, uint32_t i_engineId, uint32_t i_port, uint32_t i_slaveAddress, uint32_t i_busSpeed, uint64_t i_offset, uint32_t i_offsetFieldSize, uint32_t i_length, uint32_t i_i2cFlags, uint32_t i_flags, ecmdDataBuffer * i_data, uint32_t i_iicAckMask, uint32_t i_numRedos, uint32_t i_msDelay ) {
+uint32_t I2CInstruction::setup(InstructionCommand i_command, std::string &i_deviceString, uint32_t i_engineId, uint32_t i_port, uint32_t i_slaveAddress, uint32_t i_busSpeed, uint64_t i_offset, uint32_t i_offsetFieldSize, uint32_t i_length, uint32_t i_i2cFlags, uint32_t i_flags, ecmdDataBuffer * i_data, uint32_t i_iicAckMask, uint32_t i_numRedos, uint32_t i_msDelay, uint32_t i_serverI2cFlags ) {
   deviceString = i_deviceString;
   engineId = i_engineId;
   port = i_port;
@@ -189,6 +192,10 @@ uint32_t I2CInstruction::setup(InstructionCommand i_command, std::string &i_devi
     numRedos = i_numRedos;
     msDelay = i_msDelay;
     version = 0x7;
+  }
+  if ( i_serverI2cFlags != 0 ) {
+    serverI2cFlags = i_serverI2cFlags;
+    version = 0x8;
   }
   return 0;
 }
@@ -246,7 +253,7 @@ uint32_t I2CInstruction::execute(ecmdDataBuffer & o_data, InstructionStatus & o_
         errno = 0;
 
         if (flags & INSTRUCTION_FLAG_SERVER_DEBUG) {
-          snprintf(errstr, 200, "SERVER_DEBUG : iic_config_slave_address() slaveAddress = 0x%08X\n", slaveAddress);
+          snprintf(errstr, 200, "SERVER_DEBUG : iic_config_slave_address() slaveAddress = 0x%08X i2c_slave_force(%s)\n", slaveAddress, (serverI2cFlags & ECMD_I2C_FLAGS_I2C_SLAVE_FORCE) ? "true" : "false");
           o_status.errorMessage.append(errstr);
         }
 
@@ -552,6 +559,10 @@ uint32_t I2CInstruction::flatten(uint8_t * o_data, uint32_t i_len) const {
         o_ptr[14+l_offset] = htonl(msDelay);
         l_offset += 3;
       }
+      if ( version >= 0x8 ) {
+        o_ptr[12+l_offset] = htonl(serverI2cFlags);
+        l_offset++;
+      }
       if (command == I2CREAD || command == I2CRESETLIGHT || command == I2CRESETFULL) {
         // no data to flatten
       } else {
@@ -632,6 +643,10 @@ uint32_t I2CInstruction::unflatten(const uint8_t * i_data, uint32_t i_len) {
         msDelay = ntohl(i_ptr[14+l_offset]);
         l_offset += 3;
       }
+      if ( version >= 0x8 ) {
+        serverI2cFlags = ntohl(i_ptr[12+l_offset]);
+        l_offset++;
+      }
       if (command == I2CREAD || command == I2CRESETLIGHT || command == I2CRESETFULL) {
         // no data to unflatten
       } else {
@@ -703,6 +718,9 @@ uint32_t I2CInstruction::flattenSize(void) const {
     if ( version >= 0x7 ) {
       size += sizeof(uint32_t) * 3; // iicAckMask, numRedos, msDelay
     }
+    if ( version >= 0x8 ) {
+      size += sizeof(uint32_t) * 1; // serverI2cFlags
+    }
   } else if(version == 0x1) {
     size = (13 * sizeof(uint32_t)) + data.flattenSize();
   } else if(version >= 0x2) {
@@ -751,6 +769,7 @@ std::string I2CInstruction::dumpInstruction(void) const {
   oss << "i2cAckMask    : " << iicAckMask << std::endl;
   oss << "i2cAck Redos  : " << numRedos << std::endl;
   oss << "i2cAck MsDelay: " << msDelay << std::endl;
+  oss << "serverI2cFlags: " << serverI2cFlags << std::endl;
   oss << "data length   : " << data.getBitLength() << std::endl;
   oss << "data          : ";
   for(uint32_t j = 0; j < data.getWordLength(); j++) {

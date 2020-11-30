@@ -31,6 +31,7 @@
                                    be polled when not acknowledging */
 #define I2C_TIMEOUT     0x0702  /* set timeout in units of 10 ms */
 #define I2C_SLAVE	0x0703	/* Use this slave address */
+#define I2C_SLAVE_FORCE 0x0706  /* Use this slave address, even if it is already in use by a driver! */
 #define I2C_TENBIT	0x0704	/* 0 for 7 bit addrs, != 0 for 10 bit */
 #define I2C_FUNCS	0x0705	/* Get the adapter functionality mask */
 #define I2C_RDWR	0x0707	/* Combined R/W transfer (one STOP only) */
@@ -41,6 +42,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <string.h>
+
+#include <ecmdStructs.H>
 
 #ifdef SERVER_PRINT_PERF
 #include <sys/time.h>
@@ -372,7 +375,8 @@ uint32_t ServerI2CInstruction::iic_config_slave_address(Handle * i_handle, Instr
             handle->slave_address_mask = 0x7F;
         }
 
-        rc = ioctl(handle->fd, I2C_SLAVE, handle->slave_address & handle->slave_address_mask);
+        bool force = (serverI2cFlags & ECMD_I2C_FLAGS_I2C_SLAVE_FORCE) ? true : false;
+        rc = ioctl(handle->fd, force ? I2C_SLAVE_FORCE : I2C_SLAVE, handle->slave_address & handle->slave_address_mask);
 #endif
     } 
     return rc;
